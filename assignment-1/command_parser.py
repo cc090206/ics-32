@@ -2,6 +2,6 @@
 
 # Replace the following placeholders with your information.
 
-# NAME
-# EMAIL
-# STUDENT ID
+# Chloe Chow
+# ccchow2@uci.edu
+# 62088321
