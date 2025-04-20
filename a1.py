@@ -11,7 +11,8 @@ from command_parser import (
     create_notebook,
     load_notebook,
     edit_notebook,
-    print_notebook
+    print_notebook,
+    delete_notebook
 )
 
 def main():
@@ -40,6 +41,8 @@ def main():
                 edit_notebook(args, loaded_notebook, notebook_path)
             elif cmd == "P":
                 print_notebook(args, loaded_notebook)
+            elif cmd == "D":
+               delete_notebook(args)
             else:
                 print("ERROR")
         except EOFError:
