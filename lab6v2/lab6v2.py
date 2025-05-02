@@ -21,7 +21,6 @@ BOOKMARK_PATH = "."
 BOOKMARK_FILE = "pybookmark.txt"
 
 class Bookmarker(Note):
-    # TODO: add init function with param(s). Add call to parent init using super. 
     # If you are unsure about param(s), study the class instantiation code at the bottom of the module.
     def __init__(self, note_path: Path):
         super().__init__(note_path)
