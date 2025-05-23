@@ -19,11 +19,11 @@ def store(_conn: bmc.Connection, bm: Bookmarker, url: str) -> str:
     status: either 0 or 1 to indicate the status of the command specified in the url parameter
     '''
     try:
-        # TODO: store the provided url in the pybookmark.txt file using the provided Bookmarker (bm parameter) object's _add_ function
-        
+        bm.add(url)
         status = 1
     except ValueError:
         status = 0
+
 
     bmc._write_command(_conn, str(status))
     return bmc._read_command(_conn)
@@ -39,9 +39,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
     # instantiate the bookmark class and pass to run 
     bm = Bookmarker(p)
 
-    # TODO: using the srv object, bind to the server
-    # specified by the HOST and PORT variables and start listening.
-    
+    srv.bind((HOST, PORT))
+    srv.listen()
+
 
     print("server listening on port", PORT)
     while True:
