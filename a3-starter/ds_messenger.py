@@ -8,94 +8,126 @@
 # ccchow2@uci.edu
 # 62088321
 
-import socket
+import time
+from socket import socket, AF_INET, SOCK_STREAM
+from collections import namedtuple
+
 from ds_protocol import (
     make_authenticate_request,
     make_directmessage_request,
     make_fetch_request,
-    parse_response
+    parse_response,
 )
+from notebook import Notebook
 
-class DirectMessage:
-    def __init__(self):
-        self.sender = None
-        self.recipient = None
-        self.message = None
-        self.timestamp = None
+# Simple container for a single DM
+DirectMessage = namedtuple('DirectMessage', ['sender', 'recipient', 'message', 'timestamp'])
 
 class DirectMessenger:
-    def __init__(self, dsuserver=None, username=None, password=None):
-        self.token = None
-        self.username = username
-        # Determine host and port
-        if dsuserver:
-            if ':' in dsuserver:
-                host, port_str = dsuserver.split(':', 1)
-                port = int(port_str)
-            else:
-                host = dsuserver
-                port = 3001
-        else:
-            host = 'localhost'
-            port = 3001
-        # Open socket and makefile wrappers
-        self._sock = socket.create_connection((host, port))
-        self._send = self._sock.makefile('w')
-        self._recv = self._sock.makefile('r')
-        # Authenticate if credentials supplied
-        if username and password:
-            if not self._authenticate(username, password):
-                raise RuntimeError("Authentication failed")
+    """
+    Handles a persistent connection to the DSP server, and
+    locally persists contacts & messages via Notebook.
+    """
 
-    def _authenticate(self, username: str, password: str) -> bool:
-        req = make_authenticate_request(username, password)
-        self._send.write(req + '\r\n')
-        self._send.flush()
-        line = self._recv.readline()
-        resp = parse_response(line)
+    def __init__(
+        self,
+        server_host: str = 'localhost',
+        server_port: int = 3001,
+        username: str = None,
+        password: str = None,
+        notebook_file: str = None
+    ):
+        # 1) Open socket + file‐wrappers
+        self.server = (server_host, server_port)
+        self.sock = socket(AF_INET, SOCK_STREAM)
+        self.sock.connect(self.server)
+        self._send_file = self.sock.makefile('w')
+        self._recv_file = self.sock.makefile('r')
+
+        # 2) Persistence layer
+        #    default notebook filename: "<username>_notebook.json"
+        nb_filename = notebook_file or f"{username}_notebook.json"
+        self.notebook = Notebook(nb_filename)
+
+        # 3) Authenticate once and store token
+        auth_req = make_authenticate_request(username, password)
+        self._send(auth_req)
+        resp = parse_response(self._recv())
+        if resp.status != 'ok':
+            raise RuntimeError(f"Authentication failed: {resp.message}")
+        self.token = resp.token
+
+    def _send(self, msg_str: str) -> None:
+        """Write a line (JSON) to the server and flush."""
+        self._send_file.write(msg_str + '\r\n')
+        self._send_file.flush()
+
+    def _recv(self) -> str:
+        """Read a line (JSON) back from the server."""
+        return self._recv_file.readline()
+
+    def send(self, message: str, recipient: str) -> bool:
+        """
+        Send a direct message.
+        Returns True on success, False on failure.
+        """
+        req = make_directmessage_request(self.token, message, recipient)
+        self._send(req)
+        resp = parse_response(self._recv())
+
         if resp.status == 'ok':
-            self.token = resp.token
+            dm = DirectMessage(
+                sender=None,             # outgoing
+                recipient=recipient,
+                message=message,
+                timestamp=str(time.time())
+            )
+            self.notebook.add_contact(recipient)
+            self.notebook.add_message(dm)
             return True
         return False
 
-    def send(self, message: str, recipient: str) -> bool:
-        if not self.token:
-            raise RuntimeError("Not authenticated")
-        timestamp = __import__('time').time()
-        req = make_directmessage_request(self.token, message, recipient, timestamp)
-        self._send.write(req + '\r\n')
-        self._send.flush()
-        line = self._recv.readline()
-        resp = parse_response(line)
-        return resp.status == 'ok'
+    def retrieve_new(self) -> list[DirectMessage]:
+        """
+        Fetch only unread messages, persist them, and return a list
+        of DirectMessage(sender, None, message, timestamp).
+        """
+        req = make_fetch_request(self.token, 'unread')
+        self._send(req)
+        resp = parse_response(self._recv())
 
-    def retrieve_new(self) -> list:
-        return self._retrieve('unread')
+        out = []
+        for m in resp.messages:
+            dm = DirectMessage(
+                sender=m['from'],
+                recipient=None,
+                message=m['message'],
+                timestamp=m['timestamp']
+            )
+            self.notebook.add_contact(dm.sender)
+            self.notebook.add_message(dm)
+            out.append(dm)
+        return out
 
-    def retrieve_all(self) -> list:
-        return self._retrieve('all')
+    def retrieve_all(self) -> list[DirectMessage]:
+        """
+        Fetch all history, persist anything new, and return a list of DirectMessage.
+        """
+        req = make_fetch_request(self.token, 'all')
+        self._send(req)
+        resp = parse_response(self._recv())
 
-    def _retrieve(self, what: str) -> list:
-        if not self.token:
-            raise RuntimeError("Not authenticated")
-        req = make_fetch_request(self.token, what)
-        self._send.write(req + '\r\n')
-        self._send.flush()
-        line = self._recv.readline()
-        resp = parse_response(line)
-        result = []
-        if resp.status != 'ok' or not resp.messages:
-            return result
-        for msg in resp.messages:
-            dm = DirectMessage()
-            dm.message = msg.get('message')
-            ts = msg.get('timestamp')
-            dm.timestamp = float(ts) if ts is not None else None
-            if 'from' in msg:
-                dm.sender = msg['from']
-                dm.recipient = self.username
-            else:
-                dm.sender = self.username
-                dm.recipient = msg.get('recipient')
-            result.append(dm)
-        return result
+        out = []
+        for m in resp.messages:
+            dm = DirectMessage(
+                sender=m.get('from'),
+                recipient=m.get('recipient'),
+                message=m['message'],
+                timestamp=m['timestamp']
+            )
+            # figure out which side is the peer
+            peer = dm.sender or dm.recipient
+            self.notebook.add_contact(peer)
+            self.notebook.add_message(dm)
+            out.append(dm)
+        return out
