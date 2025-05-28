@@ -1,0 +1,42 @@
+{
+  "contacts": [
+    "bob",
+    "alice"
+  ],
+  "messages": {
+    "bob": [
+      {
+        "message": "hello",
+        "sender": "bob",
+        "recipient": "alice",
+        "timestamp": 1748427454.364591
+      },
+      {
+        "message": "whats up",
+        "sender": "bob",
+        "recipient": "alice",
+        "timestamp": 1748427483.710901
+      }
+    ],
+    "alice": [
+      {
+        "message": "hi alice",
+        "sender": "alice",
+        "recipient": "bob",
+        "timestamp": 1748427464.106951
+      },
+      {
+        "message": "yay!",
+        "sender": "alice",
+        "recipient": "bob",
+        "timestamp": 1748427474.208597
+      },
+      {
+        "message": "no!",
+        "sender": "alice",
+        "recipient": "bob",
+        "timestamp": 1748427561.592587
+      }
+    ]
+  }
+}
